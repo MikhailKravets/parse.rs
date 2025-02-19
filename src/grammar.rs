@@ -20,7 +20,7 @@ pub trait Terminal {
     fn kind(&self) -> Self::TokenKind;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Eq, PartialEq)]
 pub struct NonTermToken {
     lexeme: &'static str,
 }
@@ -31,13 +31,13 @@ impl NonTermToken {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Eq, PartialEq)]
 pub enum LexicalToken<T> {
     Term(T),
     NonTerm(NonTermToken),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, PartialEq, Eq)]
 pub struct Rule<T, U, F> {
     lhs: LexicalToken<T>,
     rhs: Vec<LexicalToken<T>>,
@@ -67,14 +67,25 @@ pub struct Grammar<T, U, F> {
 
 impl<T, U, F> Grammar<T, U, F>
 where
-    T: Terminal,
+    T: Terminal + Eq,
 {
     pub fn new(rules: Vec<Rule<T, U, F>>) -> Self {
         Self { rules }
     }
 
-    pub fn first(&self) -> HashMap<Rule<T, U, F>, HashSet<Rule<T, U, F>>> {
-        todo!("Write algorithm to build a first set for the grammar")
+    pub fn first(&self) -> HashMap<&Rule<T, U, F>, HashSet<&Rule<T, U, F>>> {
+        let mut map = HashMap::new();
+
+        /* 
+            TODO: implement Hash and Eq for Rule.
+                  How to do that? U generic type doesn't need to be hashable
+                  also there is no need to hash handle function
+        */
+        for v in self.rules.iter() {
+            // map.insert(v, HashSet::new());
+        }
+        
+        map
     }
 }
 
