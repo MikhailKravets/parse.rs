@@ -170,7 +170,7 @@ mod tests {
     }
 
     fn assert_token(token: Token, kind: TokenKind, lexeme: &str) {
-        assert_eq!(token.kind(), &kind);
+        assert_eq!(token.kind(), kind);
         assert_eq!(token.lexeme(), lexeme);
     }
 
@@ -183,7 +183,7 @@ mod tests {
         assert_token(lex.next(), TokenKind::RightBrace, "");
         assert_token(lex.next(), TokenKind::RightParen, "");
 
-        assert_eq!(lex.next().kind(), &TokenKind::EOF)
+        assert_eq!(lex.next().kind(), TokenKind::EOF)
     }
 
     #[test]
@@ -195,7 +195,7 @@ mod tests {
         assert_token(lex.next(), TokenKind::Star, "");
         assert_token(lex.next(), TokenKind::Slash, "");
 
-        assert_eq!(lex.next().kind(), &TokenKind::EOF)
+        assert_eq!(lex.next().kind(), TokenKind::EOF)
     }
 
     #[test]
@@ -207,7 +207,7 @@ mod tests {
         assert_token(lex.next(), TokenKind::GreaterEqual, "");
         assert_token(lex.next(), TokenKind::EqualEqual, "");
 
-        assert_eq!(lex.next().kind(), &TokenKind::EOF)
+        assert_eq!(lex.next().kind(), TokenKind::EOF)
     }
 
     #[test]
@@ -219,7 +219,7 @@ mod tests {
         assert_token(lex.next(), TokenKind::Greater, "");
         assert_token(lex.next(), TokenKind::Equal, "");
 
-        assert_eq!(lex.next().kind(), &TokenKind::EOF)
+        assert_eq!(lex.next().kind(), TokenKind::EOF)
     }
 
     #[test]
@@ -232,7 +232,7 @@ mod tests {
         assert_token(lex.next(), TokenKind::String, first);
         assert_token(lex.next(), TokenKind::String, second);
 
-        assert_eq!(lex.next().kind(), &TokenKind::EOF)
+        assert_eq!(lex.next().kind(), TokenKind::EOF)
     }
 
     #[test]
@@ -244,7 +244,7 @@ mod tests {
         assert_token(lex.next(), TokenKind::Number, "12");
         assert_token(lex.next(), TokenKind::Number, "12.45");
 
-        assert_eq!(lex.next().kind(), &TokenKind::EOF)
+        assert_eq!(lex.next().kind(), TokenKind::EOF)
     }
 
     #[test]
@@ -257,7 +257,7 @@ mod tests {
         assert_token(lex.next(), TokenKind::True, "true");
         assert_token(lex.next(), TokenKind::Semicolon, "");
 
-        assert_eq!(lex.next().kind(), &TokenKind::EOF)
+        assert_eq!(lex.next().kind(), TokenKind::EOF)
     }
 
     /// This test case taken from code crafters
@@ -275,7 +275,7 @@ mod tests {
         assert_token(lex.next(), TokenKind::RightBrace, "");
         assert_token(lex.next(), TokenKind::RightParen, "");
 
-        assert_eq!(lex.next().kind(), &TokenKind::EOF)
+        assert_eq!(lex.next().kind(), TokenKind::EOF)
     }
 
     #[test]

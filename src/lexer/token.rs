@@ -21,14 +21,17 @@ impl<'source> Token<'source> {
         Self { kind: TokenKind::Init, lexeme: "", span: Span::default() }
     }
 
-    pub fn kind(&self) -> &TokenKind {
-        &self.kind
+    #[inline]
+    pub fn kind(&self) -> TokenKind {
+        self.kind
     }
 
+    #[inline]
     pub fn lexeme(&self) -> &str {
         &self.lexeme
     }
 
+    #[inline]
     pub fn span(&self) -> Span {
         self.span
     }
