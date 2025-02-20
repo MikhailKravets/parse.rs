@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    fmt::Debug,
     marker::PhantomData,
 };
 
@@ -20,7 +21,7 @@ pub trait Terminal {
     fn kind(&self) -> Self::TokenKind;
 }
 
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug)]
 pub struct NonTermToken {
     lexeme: &'static str,
 }
@@ -31,16 +32,36 @@ impl NonTermToken {
     }
 }
 
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug)]
 pub enum LexicalToken<T> {
     Term(T),
     NonTerm(NonTermToken),
 }
 
-#[derive(Debug, Hash, PartialEq, Eq)]
-pub struct Rule<T, U, F> {
+impl<T: Terminal> LexicalToken<T> {
+    pub fn lexeme(&self) -> &str {
+        match self {
+            Self::Term(t) => t.lexeme(),
+            Self::NonTerm(t) => t.lexeme,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Production<T> {
     lhs: LexicalToken<T>,
     rhs: Vec<LexicalToken<T>>,
+}
+
+impl<T> Production<T> {
+    fn new(lhs: LexicalToken<T>, rhs: Vec<LexicalToken<T>>) -> Self {
+        Self { lhs, rhs }
+    }
+}
+
+#[derive(Debug)]
+pub struct Rule<T, U, F> {
+    production: Production<T>,
     handle: F,
     _marker: PhantomData<U>,
 }
@@ -52,8 +73,7 @@ where
 {
     pub fn new(lhs: LexicalToken<T>, rhs: Vec<LexicalToken<T>>, handle: F) -> Self {
         Self {
-            lhs,
-            rhs,
+            production: Production::new(lhs, rhs),
             handle,
             _marker: PhantomData,
         }
@@ -63,30 +83,69 @@ where
 #[derive(Debug)]
 pub struct Grammar<T, U, F> {
     rules: Vec<Rule<T, U, F>>,
+    eof_token: LexicalToken<T>,
+    empty_token: LexicalToken<T>,
 }
 
 impl<T, U, F> Grammar<T, U, F>
 where
-    T: Terminal + Eq,
+    T: Terminal,
 {
-    pub fn new(rules: Vec<Rule<T, U, F>>) -> Self {
-        Self { rules }
-    }
-
-    pub fn first(&self) -> HashMap<&Rule<T, U, F>, HashSet<&Rule<T, U, F>>> {
-        let mut map = HashMap::new();
-
-        /* 
-            TODO: implement Hash and Eq for Rule.
-                  How to do that? U generic type doesn't need to be hashable
-                  also there is no need to hash handle function
-        */
-        for v in self.rules.iter() {
-            // map.insert(v, HashSet::new());
+    pub fn new(rules: Vec<Rule<T, U, F>>, eof_token: T, empty_token: T) -> Self {
+        Self {
+            rules,
+            eof_token: LexicalToken::Term(eof_token),
+            empty_token: LexicalToken::Term(empty_token),
         }
-        
-        map
     }
+}
+
+pub fn first<'grammar, T, U, F>(
+    grammar: &'grammar Grammar<T, U, F>,
+) -> HashMap<&'grammar str, HashSet<&'grammar str>>
+where
+    T: Terminal,
+{
+    let mut map = HashMap::new();
+    let mut stack = Vec::<&Production<T>>::with_capacity(grammar.rules.len());
+
+    for rule in grammar.rules.iter() {
+        let mut set = HashSet::new();
+        match &rule.production.lhs {
+            LexicalToken::Term(t) => {
+                // TODO: how lhs of production can be Terminal??? Pre-calculate terminals earlier
+                set.insert(t.lexeme());
+                map.insert(t.lexeme(), set)
+            }
+            LexicalToken::NonTerm(_) => map.insert(rule.production.lhs.lexeme(), set),
+        };
+    }
+
+    // key is lexeme, value is a vec of dependent productions
+    let mut rev_dependencies = HashMap::<&str, Vec<&Production<T>>>::new();
+    for rule in grammar.rules.iter() {
+        for token in rule.production.rhs.iter() {
+            match token {
+                LexicalToken::NonTerm(t) => {
+                    rev_dependencies
+                        .entry(t.lexeme)
+                        .or_default()
+                        .push(&rule.production);
+                }
+                _ => (),
+            };
+        }
+    }
+
+    // println!("{:#?}", rev_dependencies);
+
+    // TODO: build first map
+    while !stack.is_empty() {
+        // SAFETY: non-emptiness of stack is ensured in the expression under while
+        let p = stack.pop().unwrap();
+    }
+
+    map
 }
 
 #[cfg(test)]
@@ -124,5 +183,54 @@ mod tests {
             vec![LexicalToken::NonTerm(NonTermToken::new("list"))],
             |_, _: LexicalToken<Token>| Expr::Int(42),
         );
+    }
+
+    #[test]
+    fn build_first() {
+        fn handle(_: (), t: LexicalToken<Token>) {
+            println!("{:#?}", t)
+        }
+        let grammar = Grammar::new(
+            vec![
+                Rule::new(
+                    LexicalToken::NonTerm(NonTermToken::new("goal")),
+                    vec![LexicalToken::NonTerm(NonTermToken::new("list"))],
+                    handle,
+                ),
+                Rule::new(
+                    LexicalToken::NonTerm(NonTermToken::new("list")),
+                    vec![
+                        LexicalToken::NonTerm(NonTermToken::new("list")),
+                        LexicalToken::NonTerm(NonTermToken::new("pair")),
+                    ],
+                    handle,
+                ),
+                Rule::new(
+                    LexicalToken::NonTerm(NonTermToken::new("list")),
+                    vec![LexicalToken::NonTerm(NonTermToken::new("pair"))],
+                    handle,
+                ),
+                Rule::new(
+                    LexicalToken::NonTerm(NonTermToken::new("pair")),
+                    vec![
+                        LexicalToken::Term(Token::new(TokenKind::LeftParen, "(", Span::default())),
+                        LexicalToken::NonTerm(NonTermToken::new("list")),
+                        LexicalToken::Term(Token::new(TokenKind::LeftParen, "(", Span::default())),
+                    ],
+                    handle,
+                ),
+                Rule::new(
+                    LexicalToken::NonTerm(NonTermToken::new("pair")),
+                    vec![
+                        LexicalToken::Term(Token::new(TokenKind::LeftParen, "(", Span::default())),
+                        LexicalToken::Term(Token::new(TokenKind::LeftParen, "(", Span::default())),
+                    ],
+                    handle,
+                ),
+            ],
+            Token::simple(TokenKind::EOF, Span::default()),
+            Token::simple(TokenKind::Init, Span::default()),
+        );
+        let first_set = first(&grammar);
     }
 }
