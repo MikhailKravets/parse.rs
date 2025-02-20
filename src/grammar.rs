@@ -109,16 +109,9 @@ where
     let mut map = HashMap::new();
     let mut stack = Vec::<&Production<T>>::with_capacity(grammar.rules.len());
 
+    // TODO: retrieve terminal symbols from grammar and insert them into map
     for rule in grammar.rules.iter() {
-        let mut set = HashSet::new();
-        match &rule.production.lhs {
-            LexicalToken::Term(t) => {
-                // TODO: how lhs of production can be Terminal??? Pre-calculate terminals earlier
-                set.insert(t.lexeme());
-                map.insert(t.lexeme(), set)
-            }
-            LexicalToken::NonTerm(_) => map.insert(rule.production.lhs.lexeme(), set),
-        };
+        map.insert(rule.production.lhs.lexeme(), HashSet::new());
     }
 
     // key is lexeme, value is a vec of dependent productions
