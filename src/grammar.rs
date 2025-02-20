@@ -118,15 +118,10 @@ where
     let mut rev_dependencies = HashMap::<&str, Vec<&Production<T>>>::new();
     for rule in grammar.rules.iter() {
         for token in rule.production.rhs.iter() {
-            match token {
-                LexicalToken::NonTerm(t) => {
-                    rev_dependencies
-                        .entry(t.lexeme)
-                        .or_default()
-                        .push(&rule.production);
-                }
-                _ => (),
-            };
+            rev_dependencies
+                .entry(token.lexeme())
+                .or_default()
+                .push(&rule.production);
         }
     }
 
