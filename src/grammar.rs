@@ -100,11 +100,46 @@ where
     }
 
     fn terminals(&self) -> HashSet<&str> {
-        todo!()
+        let mut terminals = HashSet::new();
+
+        terminals.insert(self.empty_token.lexeme());
+        terminals.insert(self.eof_token.lexeme());
+
+        for rule in self.rules.iter() {
+            for v in rule.production.rhs.iter() {
+                match v {
+                    LexicalToken::Term(t) => {
+                        terminals.insert(t.lexeme());
+                    }
+                    _ => (),
+                }
+            }
+        }
+
+        terminals
     }
 
     fn reverse_dependencies(&self) -> HashMap<&str, Vec<&Production<T>>> {
-        todo!()
+        let mut rev_dependencies = HashMap::<&str, Vec<&Production<T>>>::new();
+
+        for rule in self.rules.iter() {
+            rev_dependencies
+                .entry(rule.production.lhs.lexeme())
+                .or_default();
+            for token in rule.production.rhs.iter() {
+                match token {
+                    LexicalToken::NonTerm(t) => {
+                        rev_dependencies
+                            .entry(t.lexeme)
+                            .or_default()
+                            .push(&rule.production);
+                    }
+                    _ => (),
+                }
+            }
+        }
+
+        rev_dependencies
     }
 }
 
@@ -119,25 +154,10 @@ where
 
     // Stack of productions to be processed by the algorithm
     let mut stack = Vec::<&Production<T>>::with_capacity(grammar.rules.len());
-    let terminals = {
-        let mut terminals = HashSet::new();
-        for rule in grammar.rules.iter() {
-            for v in rule.production.rhs.iter() {
-                match v {
-                    LexicalToken::Term(t) => {
-                        terminals.insert(t.lexeme());
-                    }
-                    _ => (),
-                }
-            }
-        }
+    let terminals = grammar.terminals();
 
-        terminals
-    };
-
-    // Reverse dependencies are needed to correctly add productions to the stack of jobs.
     // Key is lexeme, value is a vec of dependent productions
-    let mut rev_dependencies = HashMap::<&str, Vec<&Production<T>>>::new();
+    let mut rev_dependencies = grammar.reverse_dependencies();
 
     // Add terminals to first map
     for term in terminals {
@@ -151,22 +171,7 @@ where
     // Add productions to the stack of jobs
     for rule in grammar.rules.iter() {
         map.insert(rule.production.lhs.lexeme(), HashSet::new());
-        rev_dependencies.insert(rule.production.lhs.lexeme(), Vec::default());
         stack.push(&rule.production);
-    }
-
-    for rule in grammar.rules.iter() {
-        for token in rule.production.rhs.iter() {
-            match token {
-                LexicalToken::NonTerm(t) => {
-                    rev_dependencies
-                        .entry(t.lexeme)
-                        .or_default()
-                        .push(&rule.production);
-                }
-                _ => (),
-            }
-        }
     }
 
     // println!("{:#?}", rev_dependencies);
@@ -281,7 +286,7 @@ mod tests {
                     vec![
                         LexicalToken::Term(Token::new(TokenKind::LeftParen, "(", Span::default())),
                         LexicalToken::NonTerm(NonTermToken::new("list")),
-                        LexicalToken::Term(Token::new(TokenKind::LeftParen, "(", Span::default())),
+                        LexicalToken::Term(Token::new(TokenKind::LeftParen, ")", Span::default())),
                     ],
                     handle,
                 ),
@@ -289,7 +294,7 @@ mod tests {
                     LexicalToken::NonTerm(NonTermToken::new("pair")),
                     vec![
                         LexicalToken::Term(Token::new(TokenKind::LeftParen, "(", Span::default())),
-                        LexicalToken::Term(Token::new(TokenKind::LeftParen, "(", Span::default())),
+                        LexicalToken::Term(Token::new(TokenKind::LeftParen, ")", Span::default())),
                     ],
                     handle,
                 ),
