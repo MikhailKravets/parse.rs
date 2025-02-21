@@ -178,7 +178,9 @@ where
     while !stack.is_empty() {
         // SAFETY: non-emptiness of stack is ensured in the expression under while
         let p = stack.pop().unwrap();
-        let mut rhs_set = if let Some(s) = map.get(p.lhs.lexeme()) {
+
+        // TODO: what if p.rhs.len() == 0?
+        let mut rhs_set = if let Some(s) = map.get(p.rhs[0].lexeme()) {
             s.clone()
         } else {
             HashSet::new()
@@ -208,7 +210,7 @@ where
         }
 
         let first_lhs = map.entry(p.lhs.lexeme()).or_insert(HashSet::new());
-        if first_lhs.difference(&rhs_set).count() > 0 {
+        if rhs_set.difference(&first_lhs).count() > 0 {
             // TODO: if we use `.or_default()` method anyway. Perhaps, there is no need to add lhs to rev_dependencies?
             stack.extend_from_slice(rev_dependencies.entry(p.lhs.lexeme()).or_default());
         }
@@ -299,8 +301,8 @@ mod tests {
                     handle,
                 ),
             ],
-            Token::simple(TokenKind::EOF, Span::default()),
-            Token::simple(TokenKind::Init, Span::default()),
+            Token::new(TokenKind::EOF, "EOF", Span::default()),
+            Token::new(TokenKind::Init, "EPS", Span::default()),
         );
         let first_set = first(&grammar);
     }
