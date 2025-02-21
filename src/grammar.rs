@@ -1,19 +1,9 @@
 use std::{
     collections::{HashMap, HashSet},
-    fmt::Debug,
+    fmt::{self, Debug},
     marker::PhantomData,
 };
 
-/* TODO: LexicalToken is different from Token from lexer. They coincide in terminal symbols,
-       for example, terminal symbol "(" can be used as Token in lexer
-       (Token { lexeme: "(", kind: TokenKind::LeftParen} type is returned from lexer)
-       so also as lexical terminal token used in Grammar.
-
-       At the same time, non-terminal will never be returned from lexer but should
-       be present in grammar.
-
-       How to ensure this duality of terminals and how to ensure a presence of both terminal and non-terminal?
-*/
 pub trait Terminal {
     type TokenKind;
 
@@ -47,7 +37,6 @@ impl<T: Terminal> LexicalToken<T> {
     }
 }
 
-#[derive(Debug)]
 struct Production<T> {
     lhs: LexicalToken<T>,
     rhs: Vec<LexicalToken<T>>,
@@ -56,6 +45,19 @@ struct Production<T> {
 impl<T> Production<T> {
     fn new(lhs: LexicalToken<T>, rhs: Vec<LexicalToken<T>>) -> Self {
         Self { lhs, rhs }
+    }
+}
+
+impl<T: Debug> fmt::Debug for Production<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?} → {:?}", self.lhs, self.rhs)
+    }
+}
+
+impl<T: Terminal> fmt::Display for Production<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let rhs: Vec<&str> = self.rhs.iter().map(|v| v.lexeme()).collect();
+        write!(f, "{} → {}", self.lhs.lexeme(), rhs.join(" "))
     }
 }
 
@@ -81,7 +83,7 @@ where
 }
 
 #[derive(Debug)]
-pub struct Grammar<T, U, F> {
+pub struct Grammar<T: Terminal, U, F> {
     rules: Vec<Rule<T, U, F>>,
     eof_token: LexicalToken<T>,
     empty_token: LexicalToken<T>,
@@ -174,7 +176,6 @@ where
         stack.push(&rule.production);
     }
 
-    // println!("{:#?}", rev_dependencies);
     while !stack.is_empty() {
         // SAFETY: non-emptiness of stack is ensured in the expression under while
         let p = stack.pop().unwrap();
@@ -259,7 +260,7 @@ mod tests {
     }
 
     #[test]
-    fn build_first() {
+    fn build_first_for_brackets() {
         fn handle(_: (), t: LexicalToken<Token>) {
             println!("{:#?}", t)
         }
@@ -305,5 +306,56 @@ mod tests {
             Token::new(TokenKind::Init, "EPS", Span::default()),
         );
         let first_set = first(&grammar);
+
+        assert!(first_set.get("goal").unwrap().contains("("));
+        assert!(first_set.get("list").unwrap().contains("("));
+        assert!(first_set.get("pair").unwrap().contains("("));
+    }
+
+    #[test]
+    fn build_first_with_empty() {
+        fn handle(_: (), t: LexicalToken<Token>) {
+            println!("{:#?}", t)
+        }
+
+        let grammar = Grammar::new(
+            vec![
+                Rule::new(
+                    LexicalToken::NonTerm(NonTermToken::new("goal")),
+                    vec![LexicalToken::NonTerm(NonTermToken::new("A"))],
+                    handle,
+                ),
+                Rule::new(
+                    LexicalToken::NonTerm(NonTermToken::new("A")),
+                    vec![
+                        LexicalToken::NonTerm(NonTermToken::new("A")),
+                        LexicalToken::Term(Token::new(TokenKind::And, "a", Span::default())),
+                    ],
+                    handle,
+                ),
+                Rule::new(
+                    LexicalToken::NonTerm(NonTermToken::new("A")),
+                    vec![LexicalToken::Term(Token::new(
+                        TokenKind::And,
+                        "a",
+                        Span::default(),
+                    ))],
+                    handle,
+                ),
+                Rule::new(
+                    LexicalToken::NonTerm(NonTermToken::new("A")),
+                    vec![LexicalToken::Term(Token::new(
+                        TokenKind::Init,
+                        "EPS",
+                        Span::default(),
+                    ))],
+                    handle,
+                ),
+            ],
+            Token::new(TokenKind::EOF, "EOF", Span::default()),
+            Token::new(TokenKind::Init, "EPS", Span::default()),
+        );
+        let first_set = first(&grammar);
+        println!("{:#?}", first_set);
     }
 }
