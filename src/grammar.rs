@@ -101,6 +101,7 @@ where
         }
     }
 
+    /// Builds a `HashSet` of terminal token lexemes for the grammar.
     fn terminals(&self) -> HashSet<&str> {
         let mut terminals = HashSet::new();
 
@@ -121,6 +122,31 @@ where
         terminals
     }
 
+    /// Builds a `HashMap` containing reverse dependencies for all non-terminals
+    /// of the grammar. Key of the hash map is the lexeme of non-terminal token
+    /// and Value is a reference to dependant production
+    /// 
+    /// # Examples
+    /// 
+    /// For example, let's take a brackets grammar
+    /// 
+    /// ```ignore
+    /// goal -> list
+    /// list -> list pair
+    /// list -> pair
+    /// pair -> ( list )
+    /// pair -> ()
+    /// ```
+    /// 
+    /// Then the corresponding reverse dependencies map will look like
+    /// 
+    /// ```ignore
+    /// {
+    ///     "goal": [],
+    ///     "list": [goal -> list, list -> list pair, pair -> ( list )],
+    ///     "pair": [list -> list pair, list -> pair]
+    /// }
+    /// ```
     fn reverse_dependencies(&self) -> HashMap<&str, Vec<&Production<T>>> {
         let mut rev_dependencies = HashMap::<&str, Vec<&Production<T>>>::new();
 
@@ -169,7 +195,6 @@ where
     }
 
     // Add non-terminals to first map.
-    // Add reverse dependencies for non-terminals.
     // Add productions to the stack of jobs
     for rule in grammar.rules.iter() {
         map.insert(rule.production.lhs.lexeme(), HashSet::new());
