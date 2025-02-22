@@ -171,80 +171,82 @@ where
     }
 }
 
-pub fn first<'grammar, T, U, F>(
-    grammar: &'grammar Grammar<T, U, F>,
-) -> HashMap<&'grammar str, HashSet<&'grammar str>>
-where
-    T: Terminal,
-{
-    let empty_lexeme = grammar.empty_token.lexeme();
-    let mut map = HashMap::new();
+#[derive(Debug)]
+struct FirstSet<'grammar> {
+    inner: HashMap<&'grammar str, HashSet<&'grammar str>>,
+}
 
-    // Stack of productions to be processed by the algorithm
-    let mut stack = Vec::<&Production<T>>::with_capacity(grammar.rules.len());
-    let terminals = grammar.terminals();
-
-    // Key is lexeme, value is a vec of dependent productions
-    let mut rev_dependencies = grammar.reverse_dependencies();
-
-    // Add terminals to first map
-    for term in terminals {
-        let mut set = HashSet::new();
-        set.insert(term);
-        map.insert(term, set);
-    }
-
-    // Add non-terminals to first map.
-    // Add productions to the stack of jobs
-    for rule in grammar.rules.iter() {
-        map.insert(rule.production.lhs.lexeme(), HashSet::new());
-        stack.push(&rule.production);
-    }
-
-    while !stack.is_empty() {
-        // SAFETY: non-emptiness of stack is ensured in the expression under while
-        let p = stack.pop().unwrap();
-
-        // TODO: what if p.rhs.len() == 0?
-        let mut rhs_set = if let Some(s) = map.get(p.rhs[0].lexeme()) {
-            s.clone()
-        } else {
-            HashSet::new()
-        };
-        let mut trailing = false;
-
-        rhs_set.remove(empty_lexeme);
-        for t in p.rhs.iter().rev().skip(1).rev() {
-            if let Some(s) = map.get(t.lexeme()) {
-                if s.contains(empty_lexeme) {
-                    rhs_set.extend(s);
-                    rhs_set.remove(empty_lexeme);
-                } else {
-                    trailing = false;
-                    break;
+impl<'grammar, T: Terminal, U, F> From<&'grammar Grammar<T, U, F>> for FirstSet<'grammar> {
+    fn from(grammar: &'grammar Grammar<T, U, F>) -> Self {
+        let empty_lexeme = grammar.empty_token.lexeme();
+        let mut inner = HashMap::new();
+    
+        // Stack of productions to be processed by the algorithm
+        let mut stack = Vec::<&Production<T>>::with_capacity(grammar.rules.len());
+        let terminals = grammar.terminals();
+    
+        // Key is lexeme, value is a vec of dependent productions
+        let mut rev_dependencies = grammar.reverse_dependencies();
+    
+        // Add terminals to first map
+        for term in terminals {
+            let mut set = HashSet::new();
+            set.insert(term);
+            inner.insert(term, set);
+        }
+    
+        // Add non-terminals to first map.
+        // Add productions to the stack of jobs
+        for rule in grammar.rules.iter() {
+            inner.insert(rule.production.lhs.lexeme(), HashSet::new());
+            stack.push(&rule.production);
+        }
+    
+        while !stack.is_empty() {
+            // SAFETY: non-emptiness of stack is ensured in the expression under while
+            let p = stack.pop().unwrap();
+    
+            // TODO: what if p.rhs.len() == 0?
+            let mut rhs_set = if let Some(s) = inner.get(p.rhs[0].lexeme()) {
+                s.clone()
+            } else {
+                HashSet::new()
+            };
+            let mut trailing = false;
+    
+            rhs_set.remove(empty_lexeme);
+            for t in p.rhs.iter().rev().skip(1).rev() {
+                if let Some(s) = inner.get(t.lexeme()) {
+                    if s.contains(empty_lexeme) {
+                        rhs_set.extend(s);
+                        rhs_set.remove(empty_lexeme);
+                    } else {
+                        trailing = false;
+                        break;
+                    }
                 }
             }
+    
+            if trailing
+                && inner
+                    .entry(p.rhs.last().unwrap().lexeme())
+                    .or_insert(HashSet::new())
+                    .contains(empty_lexeme)
+            {
+                rhs_set.insert(empty_lexeme);
+            }
+    
+            let first_lhs = inner.entry(p.lhs.lexeme()).or_insert(HashSet::new());
+            if rhs_set.difference(&first_lhs).count() > 0 {
+                // TODO: if we use `.or_default()` method anyway. Perhaps, there is no need to add lhs to rev_dependencies?
+                stack.extend_from_slice(rev_dependencies.entry(p.lhs.lexeme()).or_default());
+            }
+    
+            first_lhs.extend(rhs_set);
         }
-
-        if trailing
-            && map
-                .entry(p.rhs.last().unwrap().lexeme())
-                .or_insert(HashSet::new())
-                .contains(empty_lexeme)
-        {
-            rhs_set.insert(empty_lexeme);
-        }
-
-        let first_lhs = map.entry(p.lhs.lexeme()).or_insert(HashSet::new());
-        if rhs_set.difference(&first_lhs).count() > 0 {
-            // TODO: if we use `.or_default()` method anyway. Perhaps, there is no need to add lhs to rev_dependencies?
-            stack.extend_from_slice(rev_dependencies.entry(p.lhs.lexeme()).or_default());
-        }
-
-        first_lhs.extend(rhs_set);
+    
+        Self { inner }
     }
-
-    map
 }
 
 #[cfg(test)]
@@ -330,11 +332,11 @@ mod tests {
             Token::new(TokenKind::EOF, "EOF", Span::default()),
             Token::new(TokenKind::Init, "EPS", Span::default()),
         );
-        let first_set = first(&grammar);
+        let first_set = FirstSet::from(&grammar);
 
-        assert!(first_set.get("goal").unwrap().contains("("));
-        assert!(first_set.get("list").unwrap().contains("("));
-        assert!(first_set.get("pair").unwrap().contains("("));
+        assert!(first_set.inner.get("goal").unwrap().contains("("));
+        assert!(first_set.inner.get("list").unwrap().contains("("));
+        assert!(first_set.inner.get("pair").unwrap().contains("("));
     }
 
     #[test]
@@ -380,7 +382,7 @@ mod tests {
             Token::new(TokenKind::EOF, "EOF", Span::default()),
             Token::new(TokenKind::Init, "EPS", Span::default()),
         );
-        let first_set = first(&grammar);
+        let first_set = FirstSet::from(&grammar);
         println!("{:#?}", first_set);
     }
 }
