@@ -64,6 +64,7 @@ impl<T: Terminal> fmt::Display for Production<T> {
     }
 }
 
+// TODO: make Item hashable
 #[derive(Debug)]
 pub struct Item<T> {
     production: Production<T>,
