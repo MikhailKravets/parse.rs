@@ -9,3 +9,6 @@ pub fn closure<'grammar, T: Terminal, U, F>(
 ) -> HashSet<&'grammar Item<T>> {
     todo!()
 }
+
+// TODO: to be able to unite Item sets with similar productions but
+//       different lookahead. How to make a merging algorithm efficient?
