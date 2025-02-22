@@ -98,6 +98,11 @@ impl<T: Terminal> Item<T> {
             lookahead,
         }
     }
+
+    pub fn next(&self, skip: usize) -> &[LexicalToken<T>] {
+        // TODO: it should return a slice of next tokens after dot
+        todo!()
+    }
 }
 
 impl<T: Clone + Terminal> Item<T> {
