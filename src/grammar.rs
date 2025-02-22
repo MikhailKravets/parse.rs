@@ -1,6 +1,8 @@
 use std::{
+    cmp,
     collections::{HashMap, HashSet},
     fmt::{self, Debug},
+    hash::{Hash, Hasher},
     marker::PhantomData,
 };
 
@@ -10,10 +12,12 @@ pub trait Terminal {
     type TokenKind;
 
     fn lexeme(&self) -> &str;
+
+    // TODO: is this method needed?
     fn kind(&self) -> Self::TokenKind;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NonTermToken {
     lexeme: &'static str,
 }
@@ -39,19 +43,33 @@ impl<T: Terminal> LexicalToken<T> {
     }
 }
 
-#[derive(Clone)]
-pub struct Production<T> {
+impl<T: Terminal> cmp::PartialEq for LexicalToken<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.lexeme() == other.lexeme()
+    }
+}
+
+impl<T: Terminal> cmp::Eq for LexicalToken<T> {}
+
+impl<T: Terminal> Hash for LexicalToken<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.lexeme().hash(state);
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct Production<T: Terminal> {
     lhs: LexicalToken<T>,
     rhs: Vec<LexicalToken<T>>,
 }
 
-impl<T> Production<T> {
+impl<T: Terminal> Production<T> {
     fn new(lhs: LexicalToken<T>, rhs: Vec<LexicalToken<T>>) -> Self {
         Self { lhs, rhs }
     }
 }
 
-impl<T: Debug> fmt::Debug for Production<T> {
+impl<T: Debug + Terminal> fmt::Debug for Production<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?} → {:?}", self.lhs, self.rhs)
     }
@@ -65,14 +83,14 @@ impl<T: Terminal> fmt::Display for Production<T> {
 }
 
 // TODO: make Item hashable
-#[derive(Debug)]
-pub struct Item<T> {
+#[derive(Debug, Eq)]
+pub struct Item<T: Terminal> {
     production: Production<T>,
     dot_at: usize,
     lookahead: T,
 }
 
-impl<T> Item<T> {
+impl<T: Terminal> Item<T> {
     pub fn new(production: Production<T>, lookahead: T) -> Self {
         Self {
             production,
@@ -82,7 +100,7 @@ impl<T> Item<T> {
     }
 }
 
-impl<T: Clone> Item<T> {
+impl<T: Clone + Terminal> Item<T> {
     pub fn moving(item: &Self) -> Self {
         if item.dot_at >= item.production.rhs.len() {
             // TODO: use recoverable errors instead of panic
@@ -121,8 +139,31 @@ impl<T: Terminal> fmt::Display for Item<T> {
     }
 }
 
+impl<T: Terminal + PartialEq> cmp::PartialEq for Item<T> {
+    fn eq(&self, other: &Self) -> bool {
+        if self.dot_at != other.dot_at {
+            return false;
+        }
+
+        if self.production != other.production {
+            return false;
+        }
+
+        true
+    }
+}
+
+impl<T: Terminal> Hash for Item<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.dot_at.hash(state);
+        self.production.lhs.lexeme().hash(state);
+        self.production.rhs.as_slice().hash(state);
+        self.lookahead.lexeme().hash(state);
+    }
+}
+
 #[derive(Debug)]
-pub struct Rule<T, U, F> {
+pub struct Rule<T: Terminal, U, F> {
     production: Production<T>,
     handle: F,
     _marker: PhantomData<U>,
