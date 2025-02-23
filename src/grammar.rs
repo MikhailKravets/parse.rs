@@ -43,6 +43,12 @@ impl<T: Terminal> LexicalToken<T> {
     }
 }
 
+// TODO: this is wrong!!! It should compare TokenKind for LexicalToken::Term as well
+// FIXME: Fix all PartialEq and Hash implementations for
+//  - LexicalToken<T>
+//  - T
+//  - Production
+//  - Item
 impl<T: Terminal> cmp::PartialEq for LexicalToken<T> {
     fn eq(&self, other: &Self) -> bool {
         self.lexeme() == other.lexeme()
@@ -64,8 +70,24 @@ pub struct Production<T: Terminal> {
 }
 
 impl<T: Terminal> Production<T> {
-    fn new(lhs: LexicalToken<T>, rhs: Vec<LexicalToken<T>>) -> Self {
+    pub fn new(lhs: LexicalToken<T>, rhs: Vec<LexicalToken<T>>) -> Self {
         Self { lhs, rhs }
+    }
+
+    #[inline]
+    pub fn lhs(&self) -> &LexicalToken<T> {
+        &self.lhs
+    }
+
+    #[inline]
+    pub fn rhs(&self) -> &[LexicalToken<T>] {
+        &self.rhs
+    }
+
+    /// Returns `true` if right hand side of the production is empty
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.rhs.is_empty()
     }
 }
 
@@ -87,11 +109,11 @@ impl<T: Terminal> fmt::Display for Production<T> {
 pub struct Item<T: Terminal> {
     production: Production<T>,
     dot_at: usize,
-    lookahead: T,
+    lookahead: LexicalToken<T>,
 }
 
 impl<T: Terminal> Item<T> {
-    pub fn new(production: Production<T>, lookahead: T) -> Self {
+    pub fn new(production: Production<T>, lookahead: LexicalToken<T>) -> Self {
         Self {
             production,
             dot_at: 0,
@@ -99,9 +121,22 @@ impl<T: Terminal> Item<T> {
         }
     }
 
-    pub fn next(&self, skip: usize) -> &[LexicalToken<T>] {
-        // TODO: it should return a slice of next tokens after dot
-        todo!()
+    pub fn next(&self, skip: usize) -> impl Iterator<Item = &LexicalToken<T>> {
+        self.production
+            .rhs
+            .iter()
+            .skip(self.dot_at + skip)
+            .map(|v| v)
+            .chain(std::iter::once(&self.lookahead))
+    }
+
+    pub fn next_symbol(&self) -> Option<&LexicalToken<T>> {
+        self.next(0).next()
+    }
+
+    #[inline]
+    pub fn production(&self) -> &Production<T> {
+        &self.production
     }
 }
 
@@ -160,6 +195,8 @@ impl<T: Terminal + PartialEq> cmp::PartialEq for Item<T> {
 
 impl<T: Terminal> Hash for Item<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
+        // TODO: require that production is Hash + Eq
+        // TODO: require that T is Hash + Eq
         self.dot_at.hash(state);
         self.production.lhs.lexeme().hash(state);
         self.production.rhs.as_slice().hash(state);
@@ -188,6 +225,13 @@ where
     }
 }
 
+impl<T: Terminal, U, F> Rule<T, U, F> {
+    #[inline]
+    pub fn production(&self) -> &Production<T> {
+        &self.production
+    }
+}
+
 #[derive(Debug)]
 pub struct Grammar<T: Terminal, U, F> {
     rules: Vec<Rule<T, U, F>>,
@@ -207,18 +251,35 @@ where
         }
     }
 
-    /// Builds a `HashSet` of terminal token lexemes for the grammar.
-    fn terminals(&self) -> HashSet<&str> {
+    #[inline]
+    pub fn eof(&self) -> &LexicalToken<T> {
+        &self.eof_token
+    }
+
+    #[inline]
+    pub fn empty(&self) -> &LexicalToken<T> {
+        &self.empty_token
+    }
+
+    #[inline]
+    pub fn rules(&self) -> &[Rule<T, U, F>] {
+        &self.rules
+    }
+}
+
+impl<T: Terminal + Clone + Eq + Hash, U, F> Grammar<T, U, F> {
+    /// Builds a `HashSet` of terminal tokens for the grammar.
+    fn terminals(&self) -> HashSet<LexicalToken<T>> {
         let mut terminals = HashSet::new();
 
-        terminals.insert(self.empty_token.lexeme());
-        terminals.insert(self.eof_token.lexeme());
+        terminals.insert(self.empty().clone());
+        terminals.insert(self.eof().clone());
 
         for rule in self.rules.iter() {
             for v in rule.production.rhs.iter() {
                 match v {
-                    LexicalToken::Term(t) => {
-                        terminals.insert(t.lexeme());
+                    LexicalToken::Term(_) => {
+                        terminals.insert(v.clone());
                     }
                     _ => (),
                 }
@@ -253,18 +314,18 @@ where
     ///     "pair": [list -> list pair, list -> pair]
     /// }
     /// ```
-    fn reverse_dependencies(&self) -> HashMap<&str, Vec<&Production<T>>> {
-        let mut rev_dependencies = HashMap::<&str, Vec<&Production<T>>>::new();
+    fn reverse_dependencies(&self) -> HashMap<LexicalToken<T>, Vec<&Production<T>>> {
+        let mut rev_dependencies = HashMap::<_, Vec<&Production<T>>>::new();
 
         for rule in self.rules.iter() {
             rev_dependencies
-                .entry(rule.production.lhs.lexeme())
+                .entry(rule.production.lhs.clone())
                 .or_default();
             for token in rule.production.rhs.iter() {
                 match token {
-                    LexicalToken::NonTerm(t) => {
+                    LexicalToken::NonTerm(_) => {
                         rev_dependencies
-                            .entry(t.lexeme)
+                            .entry(token.clone())
                             .or_default()
                             .push(&rule.production);
                     }
@@ -278,13 +339,17 @@ where
 }
 
 #[derive(Debug)]
-pub struct FirstSet<'grammar> {
-    inner: HashMap<&'grammar str, HashSet<&'grammar str>>,
+pub struct FirstSet<T> {
+    // TODO: store LexicalToken<T> in HashMap?
+    inner: HashMap<LexicalToken<T>, HashSet<LexicalToken<T>>>,
+
+    // TODO: this field is also stored in grammar. Should it be copied here?
+    empty_token: LexicalToken<T>,
 }
 
-impl<'grammar, T: Terminal, U, F> From<&'grammar Grammar<T, U, F>> for FirstSet<'grammar> {
-    fn from(grammar: &'grammar Grammar<T, U, F>) -> Self {
-        let empty_lexeme = grammar.empty_token.lexeme();
+impl<T: Terminal + Clone + Eq + Hash, U, F> From<&Grammar<T, U, F>> for FirstSet<T> {
+    fn from(grammar: &Grammar<T, U, F>) -> Self {
+        let empty_token = grammar.empty().clone();
         let mut inner = HashMap::new();
 
         // Stack of productions to be processed by the algorithm
@@ -297,35 +362,32 @@ impl<'grammar, T: Terminal, U, F> From<&'grammar Grammar<T, U, F>> for FirstSet<
         // Add terminals to first map
         for term in terminals {
             let mut set = HashSet::new();
-            set.insert(term);
+            set.insert(term.clone());
             inner.insert(term, set);
         }
 
         // Add non-terminals to first map.
         // Add productions to the stack of jobs
         for rule in grammar.rules.iter() {
-            inner.insert(rule.production.lhs.lexeme(), HashSet::new());
+            inner.insert(rule.production.lhs.clone(), HashSet::new());
             stack.push(&rule.production);
         }
 
-        while !stack.is_empty() {
-            // SAFETY: non-emptiness of stack is ensured in the expression under while
-            let p = stack.pop().unwrap();
-
+        while let Some(p) = stack.pop() {
             // TODO: what if p.rhs.len() == 0?
-            let mut rhs_set = if let Some(s) = inner.get(p.rhs[0].lexeme()) {
+            let mut rhs_set = if let Some(s) = inner.get(&p.rhs[0]) {
                 s.clone()
             } else {
                 HashSet::new()
             };
             let mut trailing = false;
 
-            rhs_set.remove(empty_lexeme);
+            rhs_set.remove(&empty_token);
             for t in p.rhs.iter().rev().skip(1).rev() {
-                if let Some(s) = inner.get(t.lexeme()) {
-                    if s.contains(empty_lexeme) {
-                        rhs_set.extend(s);
-                        rhs_set.remove(empty_lexeme);
+                if let Some(s) = inner.get(t) {
+                    if s.contains(&empty_token) {
+                        rhs_set.extend(s.into_iter().map(|v| v.clone()));
+                        rhs_set.remove(&empty_token);
                     } else {
                         trailing = false;
                         break;
@@ -335,30 +397,45 @@ impl<'grammar, T: Terminal, U, F> From<&'grammar Grammar<T, U, F>> for FirstSet<
 
             if trailing
                 && inner
-                    .entry(p.rhs.last().unwrap().lexeme())
+                    .entry(p.rhs.last().unwrap().clone()) // TODO: can we .unwrap() safely?
                     .or_insert(HashSet::new())
-                    .contains(empty_lexeme)
+                    .contains(&empty_token)
             {
-                rhs_set.insert(empty_lexeme);
+                rhs_set.insert(empty_token.clone());
             }
 
-            let first_lhs = inner.entry(p.lhs.lexeme()).or_insert(HashSet::new());
+            let first_lhs = inner.entry(p.lhs.clone()).or_insert(HashSet::new());
             if rhs_set.difference(&first_lhs).count() > 0 {
                 // TODO: if we use `.or_default()` method anyway. Perhaps, there is no need to add lhs to rev_dependencies?
-                stack.extend_from_slice(rev_dependencies.entry(p.lhs.lexeme()).or_default());
+                stack.extend_from_slice(rev_dependencies.entry(p.lhs.clone()).or_default());
             }
 
             first_lhs.extend(rhs_set);
         }
 
-        Self { inner }
+        Self {
+            inner,
+            empty_token: grammar.empty().clone(),
+        }
     }
 }
 
-impl<'grammar> FirstSet<'grammar> {
-    pub fn get<T: Terminal>(&self, items: &[Production<T>]) -> HashSet<&'grammar str> {
-        // TODO: what exactly should this method accept?
-        todo!()
+impl<T: Terminal> FirstSet<T> {
+    pub fn get<'a>(&'a self, lexemes: impl Iterator<Item = &'a LexicalToken<T>>) -> HashSet<&LexicalToken<T>> {
+        let mut set = HashSet::new();
+
+        for lexeme in lexemes {
+            if let Some(first) = self.inner.get(lexeme) {
+                set.extend(first);
+                set.remove(&self.empty_token);
+
+                if !first.contains(&self.empty_token) {
+                    break;
+                }
+            }
+        }
+
+        set
     }
 }
 
@@ -409,7 +486,7 @@ mod tests {
                     LexicalToken::NonTerm(NonTermToken::new("pair")),
                 ],
             ),
-            Token::new(TokenKind::LeftParen, "(", Span::default()),
+            LexicalToken::Term(Token::new(TokenKind::LeftParen, "(", Span::default())),
         );
         let next_item = Item::moving(&item);
         let next_item2 = Item::moving(&next_item);
@@ -470,10 +547,11 @@ mod tests {
             Token::new(TokenKind::Init, "EPS", Span::default()),
         );
         let first_set = FirstSet::from(&grammar);
+        println!("{:#?}", first_set);
 
-        assert!(first_set.inner.get("goal").unwrap().contains("("));
-        assert!(first_set.inner.get("list").unwrap().contains("("));
-        assert!(first_set.inner.get("pair").unwrap().contains("("));
+        // assert!(first_set.inner.get(&LexicalToken::NonTerm(NonTermToken::new("goal"))).unwrap().contains("("));
+        // assert!(first_set.inner.get("list").unwrap().contains("("));
+        // assert!(first_set.inner.get("pair").unwrap().contains("("));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-#[derive(Debug, Eq, PartialEq, Clone, Copy)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
 pub struct Span {
     cursor: usize,
     length: usize,

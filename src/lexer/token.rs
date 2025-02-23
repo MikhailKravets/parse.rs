@@ -1,7 +1,7 @@
 use crate::span::Span;
 use crate::lexer::kind::TokenKind;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Token<'source> {
     kind: TokenKind,
     lexeme: &'source str,
