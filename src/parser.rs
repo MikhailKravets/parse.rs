@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
-    hash::{BuildHasher, Hash, Hasher},
+    hash::{BuildHasher, Hash},
 };
 
 use crate::grammar::{FirstSet, Grammar, Item, LexicalToken, Terminal};
