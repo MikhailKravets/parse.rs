@@ -117,6 +117,7 @@ impl<T: Terminal + Clone + Eq + Ord + Hash, U, F> ParserBuilder<T, U, F> {
         }
         stack.push((self.closure(initial.into_iter()), state_name));
 
+        // TODO: build goto trace table as well!
         while let Some((state, name)) = stack.pop() {
             for item in state.iter() {
                 if let Some(token) = item.next_symbol() {
