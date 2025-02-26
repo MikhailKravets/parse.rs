@@ -1,16 +1,13 @@
 use std::{
-    cmp,
     collections::{HashMap, HashSet},
     fmt::{self, Debug},
-    hash::{Hash, Hasher},
+    hash::Hash,
     marker::PhantomData,
 };
 
 const BULLET: &str = "•";
 
 pub trait Terminal {
-    type TokenKind;
-
     fn lexeme(&self) -> &str;
 }
 
@@ -81,7 +78,7 @@ impl<T: Terminal> fmt::Display for Production<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Item<T: Terminal> {
     production: Production<T>,
     dot_at: usize,
@@ -117,17 +114,18 @@ impl<T: Terminal> Item<T> {
 }
 
 impl<T: Clone + Terminal> Item<T> {
-    pub fn moving(item: &Self) -> Self {
+    pub fn moving(item: &Self) -> Option<Self> {
         if item.dot_at >= item.production.rhs.len() {
-            // TODO: use recoverable errors instead of panic
-            panic!("Dot cannot exceed the number of tokens in right side of production")
+            // TODO: use recoverable errors instead of Option
+            return None;
+            // panic!("Dot cannot exceed the number of tokens in right side of production")
         }
 
-        Self {
+        Some(Self {
             production: item.production.clone(),
             dot_at: item.dot_at + 1,
             lookahead: item.lookahead.clone(),
-        }
+        })
     }
 }
 
@@ -397,8 +395,6 @@ mod tests {
     use super::*;
 
     impl Terminal for Token<'_> {
-        type TokenKind = TokenKind;
-
         fn lexeme(&self) -> &str {
             self.lexeme()
         }
@@ -432,8 +428,8 @@ mod tests {
             ),
             LexicalToken::Term(Token::new(TokenKind::LeftParen, "(", Span::default())),
         );
-        let next_item = Item::moving(&item);
-        let next_item2 = Item::moving(&next_item);
+        let next_item = Item::moving(&item).unwrap();
+        let next_item2 = Item::moving(&next_item).unwrap();
 
         assert_eq!(item.dot_at, 0);
         assert_eq!(next_item.dot_at, 1);
