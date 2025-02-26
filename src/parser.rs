@@ -1,4 +1,7 @@
-use std::{collections::HashSet, hash::Hash};
+use std::{
+    collections::{BTreeSet, HashMap, HashSet},
+    hash::Hash,
+};
 
 use crate::grammar::{FirstSet, Grammar, Item, Terminal};
 
@@ -10,13 +13,13 @@ pub struct ParserBuilder<T: Terminal, U, F> {
     first: FirstSet<T>,
 }
 
-impl<T: Terminal + Clone + Eq + Hash, U, F> From<Grammar<T, U, F>> for ParserBuilder<T, U, F> {
+impl<T: Terminal + Clone + Eq + Ord + Hash, U, F> From<Grammar<T, U, F>> for ParserBuilder<T, U, F> {
     fn from(value: Grammar<T, U, F>) -> Self {
         Self::new(value)
     }
 }
 
-impl<T: Terminal + Clone + Eq + Hash, U, F> ParserBuilder<T, U, F> {
+impl<T: Terminal + Clone + Eq + Ord + Hash, U, F> ParserBuilder<T, U, F> {
     pub fn new(grammar: Grammar<T, U, F>) -> Self {
         Self {
             first: FirstSet::from(&grammar),
@@ -24,9 +27,9 @@ impl<T: Terminal + Clone + Eq + Hash, U, F> ParserBuilder<T, U, F> {
         }
     }
 
-    pub fn closure(&self, initial: HashSet<Item<T>>) -> HashSet<Item<T>> {
-        let mut stack: Vec<Item<T>> = initial.into_iter().collect();
-        let mut set = HashSet::new();
+    pub fn closure(&self, initial: impl Iterator<Item = Item<T>>) -> BTreeSet<Item<T>> {
+        let mut stack: Vec<Item<T>> = initial.collect();
+        let mut set = BTreeSet::new();
 
         while let Some(item) = stack.pop() {
             if let Some(c) = item.next_symbol() {
@@ -56,7 +59,28 @@ impl<T: Terminal + Clone + Eq + Hash, U, F> ParserBuilder<T, U, F> {
 
     /// Build canonical collection of items
     pub fn build(&self) {
-        // let first = FirstSet::from(&self.grammar);
-        todo!()
+        // TODO: measure running time of BTreeSet approach and the approach with hashable HashSet
+        let mut canonical = HashMap::<BTreeSet<Item<T>>, usize>::new();
+        let mut stack = Vec::<(BTreeSet<Item<T>>, usize)>::new();
+
+        let mut initial = BTreeSet::new();
+        for rule in self.grammar.rules() {
+            if rule.production().lhs().lexeme() == "goal" {
+                // TODO: make goal lexeme dynamic?
+                initial.insert(Item::new(
+                    rule.production().clone(),
+                    self.grammar.eof().clone(),
+                ));
+            }
+        }
+        stack.push((self.closure(initial.into_iter()), 0));
+
+        while let Some((state, num)) = stack.pop() {
+            for item in state.iter() {
+                if let Some(symbol) = item.next_symbol() {
+                    
+                }
+            }
+        }
     }
 }

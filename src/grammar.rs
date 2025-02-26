@@ -14,7 +14,7 @@ pub trait Terminal {
     fn lexeme(&self) -> &str;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NonTermToken {
     lexeme: &'static str,
 }
@@ -25,7 +25,7 @@ impl NonTermToken {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum LexicalToken<T> {
     Term(T),
     NonTerm(NonTermToken),
@@ -40,7 +40,7 @@ impl<T: Terminal> LexicalToken<T> {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Production<T: Terminal> {
     lhs: LexicalToken<T>,
     rhs: Vec<LexicalToken<T>>,
@@ -81,7 +81,7 @@ impl<T: Terminal> fmt::Display for Production<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Item<T: Terminal> {
     production: Production<T>,
     dot_at: usize,
