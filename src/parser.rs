@@ -5,6 +5,7 @@ use std::{
 
 use crate::grammar::{FirstSet, Grammar, Item, LexicalToken, Terminal};
 
+/// A simple container for parses tables
 pub struct LR<T: Terminal> {
     collection: HashMap<BTreeSet<Item<T>>, usize>,
     trace: HashMap<usize, HashMap<LexicalToken<T>, usize>>,
@@ -40,6 +41,7 @@ impl<T: Terminal + Clone + Eq + Ord + Hash, U, F> ParserBuilder<T, U, F> {
         }
     }
 
+    /// Builds closure set for the initial items
     fn closure(&self, initial: impl Iterator<Item = Item<T>>) -> BTreeSet<Item<T>> {
         let mut stack: Vec<Item<T>> = initial.collect();
         let mut set = BTreeSet::new();
@@ -70,6 +72,8 @@ impl<T: Terminal + Clone + Eq + Ord + Hash, U, F> ParserBuilder<T, U, F> {
         set
     }
 
+    /// Builds goto set for the state when the next token
+    /// of the item equals `next_token`
     fn goto<'a>(
         &'a self,
         next_token: &LexicalToken<T>,
@@ -94,22 +98,26 @@ impl<T: Terminal + Clone + Eq + Ord + Hash, U, F> ParserBuilder<T, U, F> {
     }
 
     /// Build canonical collection and trace of items
-    pub fn build(&self) -> LR<T> {
+    fn build_canonical(&self) -> LR<T> {
         let mut canonical = HashMap::<BTreeSet<Item<T>>, usize>::new();
         let mut trace = HashMap::<usize, HashMap<LexicalToken<T>, usize>>::new();
         let mut stack = Vec::<(BTreeSet<Item<T>>, usize)>::new();
         let mut state_name = 0usize;
 
-        // This is an indirection set used to check is the built BTreeSet
-        // was already processed or added to processing queue.
-        //
-        // The set stores a hash of BTreeSet<Item<T>> such as
-        // calculation of hash is potentially faster than using
-        // HashSet<BTreeSet<Item<T>>> as it was implemented in prototype.
-        // Also, it uses less amount of memory.
-        // However, this requires calculation of two hashes:
-        // - one for BTreeSet<Item<T>>
-        // - second one for u64
+        /*
+        This is an indirection set used to check is the built BTreeSet
+        was already processed or added to processing queue.
+        The value of the hash map is goto state name and is used
+        to build trace table.
+
+        The set stores a hash of BTreeSet<Item<T>> such as
+        calculation of hash is potentially faster than using
+        HashSet<BTreeSet<Item<T>>> as it was implemented in prototype.
+        Also, it uses less amount of memory.
+        However, this requires calculation of two hashes:
+        - one for BTreeSet<Item<T>>
+        - second one for u64
+        */
         let mut indirect_map = HashMap::<u64, usize>::new();
 
         let mut initial = BTreeSet::new();
@@ -143,6 +151,12 @@ impl<T: Terminal + Clone + Eq + Ord + Hash, U, F> ParserBuilder<T, U, F> {
         }
 
         LR::new(canonical, trace)
+    }
+
+    pub fn build(&self) {
+        // TODO: build action, goto tables
+        // TODO: decide how to store rules and handles
+        todo!()
     }
 }
 
@@ -226,7 +240,7 @@ mod tests {
             Token::new(TokenKind::EPS, "EPS"),
         );
         let builder = ParserBuilder::new(grammar);
-        let c = builder.build();
+        let c = builder.build_canonical();
 
         let c_vec: Vec<(_, _)> = {
             let mut v: Vec<(std::collections::BTreeSet<Item<Token<'_>>>, usize)> =
