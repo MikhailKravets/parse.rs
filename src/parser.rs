@@ -1,14 +1,23 @@
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     hash::{BuildHasher, Hash},
 };
 
 use crate::grammar::{FirstSet, Grammar, Item, LexicalToken, Terminal};
 
-// TODO: to be able to unite Item sets with similar productions but
-//       different lookahead. How to make a merging algorithm efficient?
+pub struct LR<T: Terminal> {
+    collection: HashMap<BTreeSet<Item<T>>, usize>,
+    trace: HashMap<usize, HashMap<LexicalToken<T>, usize>>,
+}
 
-// TODO: substitute BTreeSet with IndexSet https://github.com/indexmap-rs/indexmap
+impl<T: Terminal> LR<T> {
+    pub fn new(
+        collection: HashMap<BTreeSet<Item<T>>, usize>,
+        trace: HashMap<usize, HashMap<LexicalToken<T>, usize>>,
+    ) -> Self {
+        Self { collection, trace }
+    }
+}
 
 pub struct ParserBuilder<T: Terminal, U, F> {
     grammar: Grammar<T, U, F>,
@@ -63,7 +72,7 @@ impl<T: Terminal + Clone + Eq + Ord + Hash, U, F> ParserBuilder<T, U, F> {
 
     fn goto<'a>(
         &'a self,
-        next_symbol: &LexicalToken<T>,
+        next_token: &LexicalToken<T>,
         state: impl Iterator<Item = &'a Item<T>>,
     ) -> BTreeSet<Item<T>> {
         let mut res = BTreeSet::new();
@@ -74,7 +83,7 @@ impl<T: Terminal + Clone + Eq + Ord + Hash, U, F> ParserBuilder<T, U, F> {
                 None => continue,
             };
 
-            if next == next_symbol {
+            if next == next_token {
                 if let Some(item) = Item::moving(&item) {
                     res.insert(item);
                 }
@@ -84,14 +93,10 @@ impl<T: Terminal + Clone + Eq + Ord + Hash, U, F> ParserBuilder<T, U, F> {
         self.closure(res.into_iter())
     }
 
-    /// Build canonical collection of items
-    pub fn build(&self) -> HashMap<BTreeSet<Item<T>>, usize> {
-        /*
-        TODO: this approach uses BTReeSet. Is there a need to use B-Tree?
-              Each state will have at most dozens of items, perhaps, it's
-              better to just use sorted Vec?
-         */
+    /// Build canonical collection and trace of items
+    pub fn build(&self) -> LR<T> {
         let mut canonical = HashMap::<BTreeSet<Item<T>>, usize>::new();
+        let mut trace = HashMap::<usize, HashMap<LexicalToken<T>, usize>>::new();
         let mut stack = Vec::<(BTreeSet<Item<T>>, usize)>::new();
         let mut state_name = 0usize;
 
@@ -105,7 +110,7 @@ impl<T: Terminal + Clone + Eq + Ord + Hash, U, F> ParserBuilder<T, U, F> {
         // However, this requires calculation of two hashes:
         // - one for BTreeSet<Item<T>>
         // - second one for u64
-        let mut indirect_set = HashSet::<u64>::new();
+        let mut indirect_map = HashMap::<u64, usize>::new();
 
         let mut initial = BTreeSet::new();
         for rule in self.grammar.rules() {
@@ -119,23 +124,25 @@ impl<T: Terminal + Clone + Eq + Ord + Hash, U, F> ParserBuilder<T, U, F> {
         }
         stack.push((self.closure(initial.into_iter()), state_name));
 
-        // TODO: build goto trace table as well!
         while let Some((state, name)) = stack.pop() {
             for item in state.iter() {
-                if let Some(token) = item.next_symbol() {
-                    let goto = self.goto(token, state.iter());
+                if let Some(next_token) = item.next_symbol() {
+                    let goto = self.goto(next_token, state.iter());
                     let goto_hash = canonical.hasher().hash_one(&goto);
-                    if !indirect_set.contains(&goto_hash) {
+                    if let Some(goto_name) = indirect_map.get(&goto_hash) {
+                        trace.entry(name).or_default().insert(next_token.clone(), *goto_name);
+                    } else {
                         state_name += 1;
-                        indirect_set.insert(goto_hash);
+                        indirect_map.insert(goto_hash, state_name);
                         stack.push((goto, state_name));
+                        trace.entry(name).or_default().insert(next_token.clone(), state_name);
                     }
                 }
             }
             canonical.insert(state, name);
         }
 
-        canonical
+        LR::new(canonical, trace)
     }
 }
 
@@ -202,7 +209,7 @@ mod tests {
                     vec![
                         LexicalToken::Term(Token::new(TokenKind::LeftParen, "(")),
                         LexicalToken::NonTerm(NonTermToken::new("list")),
-                        LexicalToken::Term(Token::new(TokenKind::LeftParen, ")")),
+                        LexicalToken::Term(Token::new(TokenKind::RightParen, ")")),
                     ],
                     handle,
                 ),
@@ -210,7 +217,7 @@ mod tests {
                     LexicalToken::NonTerm(NonTermToken::new("pair")),
                     vec![
                         LexicalToken::Term(Token::new(TokenKind::LeftParen, "(")),
-                        LexicalToken::Term(Token::new(TokenKind::LeftParen, ")")),
+                        LexicalToken::Term(Token::new(TokenKind::RightParen, ")")),
                     ],
                     handle,
                 ),
@@ -220,19 +227,31 @@ mod tests {
         );
         let builder = ParserBuilder::new(grammar);
         let c = builder.build();
-        
+
         let c_vec: Vec<(_, _)> = {
-            let mut v: Vec<(std::collections::BTreeSet<Item<Token<'_>>>, usize)> = c.into_iter().collect();
+            let mut v: Vec<(std::collections::BTreeSet<Item<Token<'_>>>, usize)> =
+                c.collection.into_iter().collect();
             v.sort_by_key(|&(_, v)| v);
             v
         };
-        
+
         for (k, v) in c_vec {
             println!("Collection {v}");
             for item in k {
                 println!("{item}");
             }
             println!();
+        }
+
+        println!();
+        let c_vec: Vec<(_, _)> = {
+            let mut v: Vec<(usize, _)> = c.trace.into_iter().collect();
+            v.sort_by_key(|&(k, _)| k);
+            v
+        };
+        for (k, v) in c_vec {
+            let data: Vec<String> = v.into_iter().map(|(k, v)| format!("({k}, {v})")).collect();
+            println!("{k}: [{}]", data.join(", "));
         }
     }
 }

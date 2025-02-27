@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    fmt::{self, Debug},
+    fmt::{self, Debug, Display},
     hash::Hash,
     marker::PhantomData,
 };
@@ -33,6 +33,15 @@ impl<T: Terminal> LexicalToken<T> {
         match self {
             Self::Term(t) => t.lexeme(),
             Self::NonTerm(t) => t.lexeme,
+        }
+    }
+}
+
+impl<T: Terminal> Display for LexicalToken<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Term(t) => write!(f, "T:{}", t.lexeme()),
+            Self::NonTerm(t) => write!(f, "NT:{}", t.lexeme)
         }
     }
 }
@@ -95,6 +104,7 @@ impl<T: Terminal> Item<T> {
     }
 
     pub fn next(&self, skip: usize) -> impl Iterator<Item = &LexicalToken<T>> {
+        // TODO: ensure that no more tokens than exist in item will be skipped
         self.production
             .rhs
             .iter()
@@ -104,7 +114,12 @@ impl<T: Terminal> Item<T> {
     }
 
     pub fn next_symbol(&self) -> Option<&LexicalToken<T>> {
-        self.next(0).next()
+        self.production
+            .rhs
+            .iter()
+            .skip(self.dot_at)
+            .map(|v| v)
+            .next()
     }
 
     #[inline]
