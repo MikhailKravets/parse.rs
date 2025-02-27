@@ -8,6 +8,8 @@ use crate::grammar::{FirstSet, Grammar, Item, LexicalToken, Terminal};
 // TODO: to be able to unite Item sets with similar productions but
 //       different lookahead. How to make a merging algorithm efficient?
 
+// TODO: substitute BTreeSet with IndexSet https://github.com/indexmap-rs/indexmap
+
 pub struct ParserBuilder<T: Terminal, U, F> {
     grammar: Grammar<T, U, F>,
     first: FirstSet<T>,
