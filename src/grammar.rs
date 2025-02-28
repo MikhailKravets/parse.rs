@@ -41,7 +41,7 @@ impl<T: Terminal> Display for LexicalToken<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Term(t) => write!(f, "T:{}", t.lexeme()),
-            Self::NonTerm(t) => write!(f, "NT:{}", t.lexeme)
+            Self::NonTerm(t) => write!(f, "NT:{}", t.lexeme),
         }
     }
 }
@@ -125,6 +125,11 @@ impl<T: Terminal> Item<T> {
     #[inline]
     pub fn production(&self) -> &Production<T> {
         &self.production
+    }
+
+    #[inline]
+    pub fn lookahead(&self) -> &LexicalToken<T> {
+        &self.lookahead
     }
 }
 
@@ -233,14 +238,17 @@ where
 
 impl<T: Terminal + Clone + Eq + Hash, U, F> Grammar<T, U, F> {
     /// Builds a `HashSet` of terminal tokens for the grammar.
-    fn terminals(&self) -> Vec<&LexicalToken<T>> {
-        let mut terminals = vec![self.empty(), self.eof()];
+    pub fn terminals(&self) -> HashSet<&LexicalToken<T>> {
+        // let mut terminals = vec![self.empty(), self.eof()];
+        let mut terminals = HashSet::new();
+        terminals.insert(self.empty());
+        terminals.insert(self.eof());
 
         for rule in self.rules.iter() {
             for v in rule.production.rhs.iter() {
                 match v {
                     LexicalToken::Term(_) => {
-                        terminals.push(v);
+                        terminals.insert(v);
                     }
                     _ => (),
                 }
@@ -248,6 +256,24 @@ impl<T: Terminal + Clone + Eq + Hash, U, F> Grammar<T, U, F> {
         }
 
         terminals
+    }
+
+    /// Builds a `HashSet` of nonterminal tokens for the grammar.
+    pub fn nonterminals(&self) -> HashSet<&LexicalToken<T>> {
+        let mut nt = HashSet::new();
+
+        for rule in self.rules.iter() {
+            for v in rule.production.rhs.iter() {
+                match v {
+                    LexicalToken::NonTerm(_) => {
+                        nt.insert(v);
+                    }
+                    _ => (),
+                }
+            }
+        }
+
+        nt
     }
 
     /// Builds a `HashMap` containing reverse dependencies for all non-terminals

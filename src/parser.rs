@@ -1,22 +1,43 @@
 use std::{
     collections::{BTreeSet, HashMap},
     hash::{BuildHasher, Hash},
+    ops::Deref,
 };
 
 use crate::grammar::{FirstSet, Grammar, Item, LexicalToken, Terminal};
 
-/// A simple container for parses tables
-pub struct LR<T: Terminal> {
-    collection: HashMap<BTreeSet<Item<T>>, usize>,
-    trace: HashMap<usize, HashMap<LexicalToken<T>, usize>>,
+/// Type alias for a set of grammar items
+type ItemSet<T> = BTreeSet<Item<T>>;
+
+/// Type alias for canonical collection
+type Canonical<T> = HashMap<ItemSet<T>, usize>;
+
+/// Type alias for canonical trace table
+type Trace<T> = HashMap<usize, HashMap<LexicalToken<T>, usize>>;
+
+/// Type alias for actions table
+type ActionTable<T> = HashMap<usize, HashMap<LexicalToken<T>, Action<T>>>;
+
+/// Type alias for goto table
+type GotoTable<T> = HashMap<usize, HashMap<LexicalToken<T>, usize>>;
+
+#[derive(Debug)]
+pub enum Action<T: Terminal> {
+    Shift(usize),
+    Reduce(Item<T>),
+    Accept(Item<T>),
 }
 
-impl<T: Terminal> LR<T> {
-    pub fn new(
-        collection: HashMap<BTreeSet<Item<T>>, usize>,
-        trace: HashMap<usize, HashMap<LexicalToken<T>, usize>>,
-    ) -> Self {
-        Self { collection, trace }
+#[derive(Debug)]
+/// A simple container for parses tables
+pub struct Parser<T: Terminal> {
+    actions: ActionTable<T>,
+    goto: GotoTable<T>,
+}
+
+impl<T: Terminal> Parser<T> {
+    pub fn new(actions: ActionTable<T>, goto: GotoTable<T>) -> Self {
+        Self { actions, goto }
     }
 }
 
@@ -42,7 +63,7 @@ impl<T: Terminal + Clone + Eq + Ord + Hash, U, F> ParserBuilder<T, U, F> {
     }
 
     /// Builds closure set for the initial items
-    fn closure(&self, initial: impl Iterator<Item = Item<T>>) -> BTreeSet<Item<T>> {
+    fn closure(&self, initial: impl Iterator<Item = Item<T>>) -> ItemSet<T> {
         let mut stack: Vec<Item<T>> = initial.collect();
         let mut set = BTreeSet::new();
 
@@ -78,7 +99,7 @@ impl<T: Terminal + Clone + Eq + Ord + Hash, U, F> ParserBuilder<T, U, F> {
         &'a self,
         next_token: &LexicalToken<T>,
         state: impl Iterator<Item = &'a Item<T>>,
-    ) -> BTreeSet<Item<T>> {
+    ) -> ItemSet<T> {
         let mut res = BTreeSet::new();
 
         for item in state {
@@ -98,10 +119,10 @@ impl<T: Terminal + Clone + Eq + Ord + Hash, U, F> ParserBuilder<T, U, F> {
     }
 
     /// Build canonical collection and trace of items
-    fn build_canonical(&self) -> LR<T> {
-        let mut canonical = HashMap::<BTreeSet<Item<T>>, usize>::new();
-        let mut trace = HashMap::<usize, HashMap<LexicalToken<T>, usize>>::new();
-        let mut stack = Vec::<(BTreeSet<Item<T>>, usize)>::new();
+    fn build_canonical(&self) -> (Canonical<T>, Trace<T>) {
+        let mut canonical = HashMap::new();
+        let mut trace: Trace<T> = HashMap::new();
+        let mut stack = Vec::<(ItemSet<T>, usize)>::new();
         let mut state_name = 0usize;
 
         /*
@@ -138,25 +159,75 @@ impl<T: Terminal + Clone + Eq + Ord + Hash, U, F> ParserBuilder<T, U, F> {
                     let goto = self.goto(next_token, state.iter());
                     let goto_hash = canonical.hasher().hash_one(&goto);
                     if let Some(goto_name) = indirect_map.get(&goto_hash) {
-                        trace.entry(name).or_default().insert(next_token.clone(), *goto_name);
+                        trace
+                            .entry(name)
+                            .or_default()
+                            .insert(next_token.clone(), *goto_name);
                     } else {
                         state_name += 1;
                         indirect_map.insert(goto_hash, state_name);
                         stack.push((goto, state_name));
-                        trace.entry(name).or_default().insert(next_token.clone(), state_name);
+                        trace
+                            .entry(name)
+                            .or_default()
+                            .insert(next_token.clone(), state_name);
                     }
                 }
             }
             canonical.insert(state, name);
         }
 
-        LR::new(canonical, trace)
+        (canonical, trace)
     }
 
-    pub fn build(&self) {
-        // TODO: build action, goto tables
+    pub fn build(&self) -> Parser<T> {
         // TODO: decide how to store rules and handles
-        todo!()
+        let (canonical, trace) = self.build_canonical();
+        let terminals = self.grammar.terminals();
+        let nonterminals = self.grammar.nonterminals();
+
+        let mut actions: ActionTable<T> = HashMap::with_capacity(canonical.len());
+        let mut goto: GotoTable<T> = HashMap::with_capacity(canonical.len());
+
+        for (set, i) in canonical {
+            for item in set {
+                match item.next_symbol() {
+                    Some(n) => {
+                        if terminals.contains(n) {
+                            let entry = actions.entry(i).or_default();
+                            if entry.contains_key(n) {
+                                println!("Shift Error");
+                            } else {
+                                entry.insert(
+                                    n.clone(),
+                                    Action::Shift(*trace.get(&i).unwrap().get(n).unwrap()), // TODO: what if trace doesn't have the entry?
+                                );
+                            }
+                        }
+                    }
+                    None => {
+                        if item.production().lhs().lexeme() == "goal"
+                            && item.lookahead() == self.grammar.eof()
+                        {
+                            let entry = actions.entry(i).or_default();
+                            entry.insert(self.grammar.eof().clone(), Action::Accept(item));
+                        } else {
+                            let entry = actions.entry(i).or_default();
+                            entry.insert(item.lookahead().clone(), Action::Reduce(item));
+                        }
+                    }
+                }
+            }
+
+            for token in nonterminals.iter() {
+                goto.entry(i).or_default().insert(
+                    (*token).clone(),
+                    *trace.get(&i).unwrap().get(token).unwrap(),
+                );
+            }
+        }
+
+        Parser::new(actions, goto)
     }
 }
 
@@ -244,7 +315,7 @@ mod tests {
 
         let c_vec: Vec<(_, _)> = {
             let mut v: Vec<(std::collections::BTreeSet<Item<Token<'_>>>, usize)> =
-                c.collection.into_iter().collect();
+                c.0.into_iter().collect();
             v.sort_by_key(|&(_, v)| v);
             v
         };
@@ -259,7 +330,7 @@ mod tests {
 
         println!();
         let c_vec: Vec<(_, _)> = {
-            let mut v: Vec<(usize, _)> = c.trace.into_iter().collect();
+            let mut v: Vec<(usize, _)> = c.1.into_iter().collect();
             v.sort_by_key(|&(k, _)| k);
             v
         };
@@ -267,5 +338,10 @@ mod tests {
             let data: Vec<String> = v.into_iter().map(|(k, v)| format!("({k}, {v})")).collect();
             println!("{k}: [{}]", data.join(", "));
         }
+    }
+
+    #[test]
+    fn build_parser() {
+        todo!("Write test")
     }
 }
