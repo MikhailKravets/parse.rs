@@ -264,12 +264,12 @@ mod tests {
         }
     }
 
-    #[test]
-    fn build_brackets_grammar() {
-        fn handle(_: (), t: LexicalToken<Token>) {
-            println!("{:#?}", t)
-        }
-        let grammar = Grammar::new(
+    fn handle(_: (), t: LexicalToken<Token>) {
+        println!("{:#?}", t)
+    }
+
+    fn brackets_grammar() -> Grammar<Token<'static>, (), fn((), LexicalToken<Token<'static>>)> {
+        Grammar::new(
             vec![
                 Rule::new(
                     LexicalToken::NonTerm(NonTermToken::new("goal")),
@@ -309,7 +309,12 @@ mod tests {
             ],
             Token::new(TokenKind::EOF, "EOF"),
             Token::new(TokenKind::EPS, "EPS"),
-        );
+        )
+    }
+
+    #[test]
+    fn build_collection() {
+        let grammar = brackets_grammar();
         let builder = ParserBuilder::new(grammar);
         let c = builder.build_canonical();
 
@@ -342,6 +347,10 @@ mod tests {
 
     #[test]
     fn build_parser() {
-        todo!("Write test")
+        let grammar = brackets_grammar();
+        let builder = ParserBuilder::new(grammar);
+        
+        let parser = builder.build();
+        println!("{:#?}", parser)
     }
 }
