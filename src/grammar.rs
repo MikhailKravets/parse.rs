@@ -3,7 +3,10 @@ use std::{
     fmt::{self, Debug, Display},
     hash::Hash,
     marker::PhantomData,
+    rc::Rc,
 };
+
+use educe::Educe;
 
 const BULLET: &str = "•";
 
@@ -87,19 +90,29 @@ impl<T: Terminal> fmt::Display for Production<T> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Item<T: Terminal> {
+#[derive(Educe)]
+#[educe(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Item<T: Terminal, F> {
     production: Production<T>,
     dot_at: usize,
     lookahead: LexicalToken<T>,
+
+    #[educe(
+        PartialEq(ignore),
+        // PartialOrd(ignore),
+        Ord(ignore),  // error: Ord is used repeatedly
+        Hash(ignore)
+    )]
+    handle: Rc<F>,
 }
 
-impl<T: Terminal> Item<T> {
-    pub fn new(production: Production<T>, lookahead: LexicalToken<T>) -> Self {
+impl<T: Terminal, F> Item<T, F> {
+    pub fn new(production: Production<T>, lookahead: LexicalToken<T>, handle: Rc<F>) -> Self {
         Self {
             production,
             dot_at: 0,
             lookahead,
+            handle,
         }
     }
 
@@ -131,9 +144,14 @@ impl<T: Terminal> Item<T> {
     pub fn lookahead(&self) -> &LexicalToken<T> {
         &self.lookahead
     }
+
+    #[inline]
+    pub fn handle(&self) -> &Rc<F> {
+        &self.handle
+    }
 }
 
-impl<T: Clone + Terminal> Item<T> {
+impl<T: Clone + Terminal, F> Item<T, F> {
     pub fn moving(item: &Self) -> Option<Self> {
         if item.dot_at >= item.production.rhs.len() {
             // TODO: use recoverable errors instead of Option
@@ -145,11 +163,12 @@ impl<T: Clone + Terminal> Item<T> {
             production: item.production.clone(),
             dot_at: item.dot_at + 1,
             lookahead: item.lookahead.clone(),
+            handle: item.handle.clone(),
         })
     }
 }
 
-impl<T: Terminal> fmt::Display for Item<T> {
+impl<T: Terminal, F> fmt::Display for Item<T, F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut rhs = Vec::with_capacity(self.production.rhs.len() + 1);
         for (i, v) in self.production.rhs.iter().enumerate() {
@@ -176,7 +195,7 @@ impl<T: Terminal> fmt::Display for Item<T> {
 #[derive(Debug)]
 pub struct Rule<T: Terminal, U, F> {
     production: Production<T>,
-    handle: F,
+    handle: Rc<F>,
     _marker: PhantomData<U>,
 }
 
@@ -188,9 +207,14 @@ where
     pub fn new(lhs: LexicalToken<T>, rhs: Vec<LexicalToken<T>>, handle: F) -> Self {
         Self {
             production: Production::new(lhs, rhs),
-            handle,
+            handle: Rc::new(handle),
             _marker: PhantomData,
         }
+    }
+
+    #[inline]
+    pub fn handle(&self) -> &Rc<F> {
+        &self.handle
     }
 }
 
@@ -468,6 +492,7 @@ mod tests {
                 ],
             ),
             LexicalToken::Term(Token::new(TokenKind::LeftParen, "(", Span::default())),
+            Rc::new(|_: (), _: ()| ()),
         );
         let next_item = Item::moving(&item).unwrap();
         let next_item2 = Item::moving(&next_item).unwrap();
