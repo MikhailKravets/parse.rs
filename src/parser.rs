@@ -43,6 +43,8 @@ pub struct Parser<T: Terminal, F> {
     goto: GotoTable<T>,
 }
 
+// TODO: add parse method
+// TODO: how to store built parser persistently?
 impl<T: Terminal, F> Parser<T, F> {
     pub fn new(actions: ActionTable<T, F>, goto: GotoTable<T>) -> Self {
         Self { actions, goto }
@@ -199,6 +201,10 @@ where
     }
 
     pub fn build(&self) -> Parser<T, F> {
+        // TODO: build ActionTable, GotoTable structs which has easier API to insert data
+        // TODO: implement Display for ...Table
+        // TODO: Is Rc<F> a good way to store handle? Perhaps, just Item<'grammar> -> &'grammar Rule? How to clone Item in this case?
+        // TODO: write tests and simplify code
         let (canonical, trace) = self.build_canonical();
         let terminals = self.grammar.terminals();
         let nonterminals = self.grammar.nonterminals();
